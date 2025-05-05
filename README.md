@@ -21,9 +21,9 @@ Bài toán TSP được mô hình hóa dưới dạng một đồ thị đầy �
 - \( E \): Tập hợp các cạnh (đường nối giữa các thành phố), mỗi cạnh \( (i, j) \) có trọng số \( w_{ij} \) biểu thị khoảng cách hoặc chi phí.
 - Lời giải là một chu trình Hamilton (đường đi qua mỗi thành phố đúng một lần và quay lại điểm xuất phát).
 - Mục tiêu: Tối thiểu hóa tổng trọng số của chu trình:  
-  \[
-  \text{Tối thiểu} \sum_{(i,j) \in \text{chu trình}} w_{ij}
-  \]
+min ∑ w_ij với (i, j) ∈ chu trình
+
+
 
 ## Phương pháp Áp dụng
 Nhóm dự kiến triển khai và so sánh các thuật toán tìm kiếm cục bộ sau để giải bài toán TSP:
