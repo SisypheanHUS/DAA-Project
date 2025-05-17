@@ -27,11 +27,10 @@ min ∑ w_ij với (i, j) ∈ chu trình
 
 ## Phương pháp Áp dụng
 Nhóm dự kiến triển khai và so sánh các thuật toán tìm kiếm cục bộ sau để giải bài toán TSP:
-1. **Guided Local Search (GLS)**: Sử dụng các khoản phạt để thoát khỏi cực trị cục bộ bằng cách điều chỉnh hàm mục tiêu.
-2. **Tabu Search (TS)**: Duy trì danh sách tabu để tránh quay lại các lời giải đã khám phá trước đó.
-3. **Iterated Local Search (ILS)**: Kết hợp tìm kiếm cục bộ với các phép nhiễu để khám phá không gian lời giải mới.
-4. **Variable Neighborhood Search (VNS)**: Thay đổi hệ thống các cấu trúc lân cận để đa dạng hóa tìm kiếm.
-5. **Simulated Annealing (SA)**: Mô phỏng quá trình ủ kim loại, chấp nhận các lời giải tệ hơn với xác suất giảm dần theo thời gian.
+1. **Tabu Search (TS)**: Duy trì danh sách tabu để tránh quay lại các lời giải đã khám phá trước đó.
+2. **Iterated Local Search (ILS)**: Kết hợp tìm kiếm cục bộ với các phép nhiễu để khám phá không gian lời giải mới.
+3. **Variable Neighborhood Search (VNS)**: Thay đổi hệ thống các cấu trúc lân cận để đa dạng hóa tìm kiếm.
+4. **Simulated Annealing (SA)**: Mô phỏng quá trình ủ kim loại, chấp nhận các lời giải tệ hơn với xác suất giảm dần theo thời gian.
 
 Mỗi thuật toán sẽ bắt đầu với một lời giải ban đầu (ví dụ: một chu trình ngẫu nhiên hoặc lời giải tham lam) và cải thiện dần thông qua việc khám phá các lân cận.
 
