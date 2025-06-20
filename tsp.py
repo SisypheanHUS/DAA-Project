@@ -1,5 +1,3 @@
-# tsp.py
-
 import os
 import tsplib95
 import numpy as np
@@ -8,615 +6,426 @@ import random
 import math
 import time
 import csv
+from typing import Dict, List, Tuple, Optional, Callable
 
-# Hàm phụ trợ
-def load_tsp_data(filename):
-    """Đọc file .tsp và tạo ma trận khoảng cách Euclidean."""
-    print(f"Đang đọc file: {filename}")
-    if not os.path.exists(filename):
-        print(f"Lỗi: File {filename} không tồn tại trong thư mục hiện tại: {os.getcwd()}")
+# Hàm tiện ích
+def load_tsp_data(filepath: str) -> Tuple[Optional[List[int]], Optional[Dict[int, Tuple[float, float]]], Optional[np.ndarray]]:
+    """Đọc dữ liệu TSP từ file và tính ma trận khoảng cách Euclidean.
+
+    Args:
+        filepath: Đường dẫn đến file TSP.
+
+    Returns:
+        Bộ ba chứa danh sách node, tọa độ, và ma trận khoảng cách, hoặc (None, None, None) nếu có lỗi.
+    """
+    if not os.path.exists(filepath):
+        print(f"Lỗi: Không tìm thấy file '{filepath}' trong thư mục {os.getcwd()}")
         return None, None, None
     try:
-        with open(filename, 'r') as f:
-            content = f.read().strip()
-            if not content:
-                print(f"Lỗi: File {filename} trống")
-                return None, None, None
-            if 'NODE_COORD_SECTION' not in content or 'EOF' not in content:
-                print(f"Lỗi: File {filename} có định dạng không đúng (thiếu NODE_COORD_SECTION hoặc EOF)")
-                return None, None, None
-        problem = tsplib95.load(filename)
+        problem = tsplib95.load(filepath)
         nodes = list(problem.get_nodes())
         coords = problem.node_coords
-        n = len(nodes)
-        print(f"Số thành phố: {n}")
-        dist_matrix = np.zeros((n, n))
-        for i in range(1, n+1):
-            for j in range(1, n+1):
-                if i != j:
-                    xi, yi = coords[i]
-                    xj, yj = coords[j]
-                    dist_matrix[i-1][j-1] = np.sqrt((xi - xj)**2 + (yi - yj)**2)
-        print(f"Đọc file {filename} thành công")
+        num_nodes = len(nodes)
+        dist_matrix = np.zeros((num_nodes, num_nodes), dtype=np.float64)
+        for i in range(num_nodes):
+            for j in range(i + 1, num_nodes):
+                xi, yi = coords[i + 1]
+                xj, yj = coords[j + 1]
+                dist = math.sqrt((xi - xj) ** 2 + (yi - yj) ** 2)
+                dist_matrix[i, j] = dist_matrix[j, i] = dist
+        print(f"Đã tải '{filepath}' với {num_nodes} thành phố")
         return nodes, coords, dist_matrix
     except Exception as e:
-        print(f"Lỗi khi đọc file {filename}: {e}")
+        print(f"Lỗi khi tải '{filepath}': {e}")
         return None, None, None
 
-def tour_length(tour, dist_matrix):
-    """Tính tổng độ dài chu trình TSP."""
-    length = 0
-    for i in range(len(tour)):
-        length += dist_matrix[tour[i]][tour[(i+1) % len(tour)]]
-    return length
+def compute_tour_length(tour: List[int], dist_matrix: np.ndarray) -> float:
+    """Tính tổng độ dài chu trình TSP.
 
-def plot_tour(tour, coords, title, ax, dataset_name):
-    """Vẽ chu trình TSP với các thành phố và đường nối."""
-    n = len(tour)
-    x = [coords[i][0] for i in range(1, n+1)]
-    y = [coords[i][1] for i in range(1, n+1)]
-    ax.scatter(x, y, c='blue', label='Thành phố')
-    for i in range(n):
-        start = tour[i]
-        end = tour[(i+1) % n]
-        ax.plot([coords[start+1][0], coords[end+1][0]], 
-                [coords[start+1][1], coords[end+1][1]], 'r-')
-    ax.set_title(f"{title}\\n{dataset_name}")
+    Args:
+        tour: Danh sách các chỉ số node tạo thành chu trình.
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+
+    Returns:
+        Tổng độ dài chu trình.
+    """
+    return sum(dist_matrix[tour[i], tour[(i + 1) % len(tour)]] for i in range(len(tour)))
+
+def plot_tour(tour: List[int], coords: Dict[int, Tuple[float, float]], title: str, ax: plt.Axes, dataset_name: str) -> None:
+    """Vẽ chu trình TSP với các thành phố và đường nối.
+
+    Args:
+        tour: Danh sách các chỉ số node.
+        coords: Từ điển chứa tọa độ của các node.
+        title: Tiêu đề biểu đồ.
+        ax: Đối tượng trục của Matplotlib.
+        dataset_name: Tên bộ dữ liệu.
+    """
+    num_nodes = len(tour)
+    x_coords = [coords[i + 1][0] for i in range(num_nodes)]
+    y_coords = [coords[i + 1][1] for i in range(num_nodes)]
+    ax.scatter(x_coords, y_coords, c='blue', label='Thành phố')
+    for i in range(num_nodes):
+        start, end = tour[i], tour[(i + 1) % num_nodes]
+        ax.plot([coords[start + 1][0], coords[end + 1][0]],
+                [coords[start + 1][1], coords[end + 1][1]], 'r-')
+    ax.set_title(f"{title}\n{dataset_name}")
     ax.legend()
 
-def save_results_to_csv(results, datasets, filename="tsp_results.csv"):
-    """Lưu kết quả vào file CSV."""
-    with open(filename, 'w', newline='') as csvfile:
+def save_results_to_csv(results: Dict, datasets: Dict, filepath: str = "tsp_results.csv") -> None:
+    """Lưu kết quả thuật toán vào file CSV.
+
+    Args:
+        results: Từ điển chứa kết quả của từng bộ dữ liệu và thuật toán.
+        datasets: Từ điển chứa tên bộ dữ liệu và độ dài tối ưu.
+        filepath: Đường dẫn file CSV đầu ra.
+    """
+    with open(filepath, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Dataset', 'Algorithm', 'Tour Length', 'Error (%)', 'Time (s)'])
+        writer.writerow(['Bộ dữ liệu', 'Thuật toán', 'Độ dài chu trình', 'Sai lệch (%)', 'Thời gian (s)'])
         for dataset, optimal_length in datasets.items():
             for algo, res in results[dataset].items():
                 error = (res['length'] - optimal_length) / optimal_length * 100
-                writer.writerow([dataset, algo, res['length'], error, res['time']])
-    print(f"Kết quả đã được lưu vào {filename}")
+                writer.writerow([dataset, algo, res['length'], f"{error:.2f}", f"{res['time']:.2f}"])
+    print(f"Kết quả đã được lưu vào '{filepath}'")
 
-def plot_comparison(results, datasets, metric='length', filename="comparison.png"):
-    """Vẽ biểu đồ cột so sánh các thuật toán theo độ dài hoặc thời gian."""
+def plot_comparison(results: Dict, datasets: Dict, metric: str = 'length', filepath: str = "comparison.png") -> None:
+    """Vẽ biểu đồ cột so sánh các thuật toán theo chỉ số được chọn.
+
+    Args:
+        results: Từ điển chứa kết quả của từng bộ dữ liệu và thuật toán.
+        datasets: Từ điển chứa tên bộ dữ liệu và độ dài tối ưu.
+        metric: Chỉ số so sánh ('length' hoặc 'time').
+        filepath: Đường dẫn file đầu ra của biểu đồ.
+    """
     fig, ax = plt.subplots(figsize=(12, 6))
     algorithms = list(next(iter(results.values())).keys())
-    x = np.arange(len(datasets))
+    dataset_names = list(datasets.keys())
+    x = np.arange(len(dataset_names))
     width = 0.2
-    
     for i, algo in enumerate(algorithms):
-        values = []
-        for dataset in datasets:
-            if metric == 'length':
-                optimal_length = datasets[dataset]
-                length = results[dataset][algo]['length']
-                error = (length - optimal_length) / optimal_length * 100
-                values.append(error)
-            else:
-                values.append(results[dataset][algo]['time'])
-        ax.bar(x + i*width, values, width, label=algo)
-    
+        values = [
+            (results[ds][algo]['length'] - datasets[ds]) / datasets[ds] * 100 if metric == 'length'
+            else results[ds][algo]['time']
+            for ds in dataset_names
+        ]
+        ax.bar(x + i * width, values, width, label=algo)
     ax.set_xlabel('Bộ dữ liệu')
     ax.set_ylabel('Sai lệch (%)' if metric == 'length' else 'Thời gian (s)')
-    ax.set_title(f'So sánh các thuật toán theo {"Sai lệch" if metric == 'length' else 'Thời gian'}')
-    ax.set_xticks(x + width * 1.5)
-    ax.set_xticklabels(datasets.keys())
+    ax.set_title(f"So sánh thuật toán theo {'Sai lệch' if metric == 'length' else 'Thời gian'}")
+    ax.set_xticks(x + width * (len(algorithms) - 1) / 2)
+    ax.set_xticklabels(dataset_names)
     ax.legend()
     plt.tight_layout()
-    plt.savefig(filename)
-    plt.show()
-    print(f"Biểu đồ so sánh đã được lưu vào {filename}")
+    plt.savefig(filepath)
+    plt.close()
+    print(f"Biểu đồ so sánh đã được lưu vào '{filepath}'")
 
-# Thuật toán
-def tabu_search(dist_matrix, max_iterations=1000, tabu_size=20, convergence_log=None):
-    """Tabu Search cho TSP."""
-    n = len(dist_matrix)
-    # Better initialization with nearest neighbor
-    tour = nearest_neighbor(dist_matrix, random.randint(0, n-1))
-    best_tour = tour.copy()
-    best_length = tour_length(tour, dist_matrix)
-    current_length = best_length
-    tabu_list = {}  # Dictionary to store move:expiration_time
+# Triển khai thuật toán
+def nearest_neighbor(dist_matrix: np.ndarray, start: int) -> List[int]:
+    """Tạo chu trình ban đầu bằng heuristic nearest neighbor.
+
+    Args:
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+        start: Chỉ số node bắt đầu.
+
+    Returns:
+        Chu trình ban đầu dưới dạng danh sách các chỉ số node.
+    """
+    num_nodes = len(dist_matrix)
+    tour = [start]
+    unvisited = set(range(num_nodes)) - {start}
+    while unvisited:
+        current = tour[-1]
+        next_node = min(unvisited, key=lambda x: dist_matrix[current, x])
+        tour.append(next_node)
+        unvisited.remove(next_node)
+    return tour
+
+def tabu_search(dist_matrix: np.ndarray, max_iterations: int = 1000, tabu_tenure: int = 20) -> Tuple[List[int], float]:
+    """Giải TSP bằng Tabu Search với tenure động và danh sách ứng viên.
+
+    Args:
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+        max_iterations: Số lần lặp tối đa.
+        tabu_tenure: Kích thước cơ bản của danh sách tabu.
+
+    Returns:
+        Chu trình tốt nhất và độ dài của nó.
+    """
+    num_nodes = len(dist_matrix)
+    tour = nearest_neighbor(dist_matrix, random.randint(0, num_nodes - 1))
+    best_tour, best_length = tour[:], compute_tour_length(tour, dist_matrix)
+    tabu_list: Dict[Tuple[int, int, str], int] = {}
     non_improvement = 0
     max_non_improvement = 100
-    
+
     for iteration in range(max_iterations):
-        # Find best non-tabu move
+        candidates = [(i, j, "swap") for i in range(num_nodes) for j in range(i + 1, num_nodes)][:50]
+        random.shuffle(candidates)
         best_move = None
-        best_move_length = float('inf')
-        candidates = []
-        
-        # Generate candidate moves
-        for i in range(n):
-            for j in range(i+1, n):
-                # Swap
-                candidates.append((i, j, "swap"))
-                # Reverse segment
-                candidates.append((i, j, "reverse"))
-        
-        # Evaluate all candidates
-        random.shuffle(candidates)  # Randomize to avoid bias
-        for i, j, move_type in candidates[:50]:  # Limit to 50 candidates for efficiency
-            new_tour = tour.copy()
-            if move_type == "swap":
-                new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
-            else:  # reverse
-                new_tour[i:j+1] = new_tour[i:j+1][::-1]
-                
-            new_length = tour_length(new_tour, dist_matrix)
-            
-            # Check if move is tabu
-            tabu_key = (i, j, move_type)
-            reverse_key = (j, i, move_type)
-            is_tabu = (tabu_key in tabu_list and iteration < tabu_list[tabu_key]) or \
-                      (reverse_key in tabu_list and iteration < tabu_list[reverse_key])
-            
-            # Accept if best move so far and either not tabu or satisfies aspiration criteria
-            if (not is_tabu or new_length < best_length) and new_length < best_move_length:
-                best_move = (i, j, move_type, new_tour, new_length)
-                best_move_length = new_length
-        
-        # Apply best move
+        best_new_length = float('inf')
+
+        for i, j, move_type in candidates:
+            new_tour = tour[:]
+            new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
+            new_length = compute_tour_length(new_tour, dist_matrix)
+            move_key = (i, j, move_type)
+            is_tabu = move_key in tabu_list and iteration < tabu_list[move_key]
+            if (not is_tabu or new_length < best_length) and new_length < best_new_length:
+                best_move = (new_tour, new_length, move_key)
+                best_new_length = new_length
+
         if best_move:
-            i, j, move_type, new_tour, new_length = best_move
-            tour = new_tour
-            current_length = new_length
-            
-            # Update tabu list
-            tabu_list[(i, j, move_type)] = iteration + tabu_size + random.randint(0, 5)
-            
-            # Update best solution if improved
-            if new_length < best_length:
-                best_tour = new_tour.copy()
-                best_length = new_length
+            tour, best_length_candidate, move_key = best_move
+            tabu_list[move_key] = iteration + tabu_tenure + random.randint(0, 5)
+            if best_length_candidate < best_length:
+                best_tour, best_length = tour[:], best_length_candidate
                 non_improvement = 0
             else:
                 non_improvement += 1
         else:
             non_improvement += 1
-        
-        # Diversification if stuck
+
         if non_improvement >= max_non_improvement:
-            tour = perturb_heavily(tour)
-            current_length = tour_length(tour, dist_matrix)
+            tour = perturb_heavily(tour, num_nodes)
             non_improvement = 0
-        
-        if convergence_log is not None:
-            convergence_log.append(best_length)
-    
+
     return best_tour, best_length
 
-def two_opt(tour, dist_matrix):
-    """Tìm kiếm cục bộ 2-opt để cải thiện chu trình."""
-    best_tour = tour.copy()
-    best_length = tour_length(tour, dist_matrix)
+def two_opt(tour: List[int], dist_matrix: np.ndarray) -> Tuple[List[int], float]:
+    """Cải thiện chu trình bằng tìm kiếm cục bộ 2-opt với chiến lược cải thiện đầu tiên.
+
+    Args:
+        tour: Chu trình ban đầu.
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+
+    Returns:
+        Chu trình được cải thiện và độ dài của nó.
+    """
+    best_tour, best_length = tour[:], compute_tour_length(tour, dist_matrix)
     improved = True
+    num_nodes = len(tour)
     while improved:
         improved = False
-        for i in range(1, len(tour)-2):
-            for j in range(i+1, len(tour)):
-                new_tour = tour.copy()
-                new_tour[i:j] = new_tour[i:j][::-1]
-                new_length = tour_length(new_tour, dist_matrix)
-                if new_length < best_length:
-                    best_tour = new_tour.copy()
-                    best_length = new_length
+        for i in range(1, num_nodes - 2):
+            for j in range(i + 2, num_nodes):
+                delta = (dist_matrix[best_tour[i - 1], best_tour[j]] + dist_matrix[best_tour[i], best_tour[(j + 1) % num_nodes]]) - \
+                        (dist_matrix[best_tour[i - 1], best_tour[i]] + dist_matrix[best_tour[j], best_tour[(j + 1) % num_nodes]])
+                if delta < -1e-10:
+                    best_tour[i:j + 1] = best_tour[i:j + 1][::-1]
+                    best_length += delta
                     improved = True
-        tour = best_tour.copy()
+                    break
+            if improved:
+                break
     return best_tour, best_length
 
-def perturb(tour, num_swaps=3):
-    """Nhiễu chu trình bằng hoán đổi ngẫu nhiên."""
-    new_tour = tour.copy()
-    for _ in range(num_swaps):
-        i, j = random.sample(range(len(tour)), 2)
+def perturb_heavily(tour: List[int], num_nodes: int) -> List[int]:
+    """Nhiễu mạnh chu trình để thoát khỏi cực trị cục bộ.
+
+    Args:
+        tour: Chu trình hiện tại.
+        num_nodes: Số lượng node trong chu trình.
+
+    Returns:
+        Chu trình bị nhiễu.
+    """
+    new_tour = tour[:]
+    for _ in range(int(num_nodes * 0.3)):
+        i, j = random.sample(range(num_nodes), 2)
         new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
     return new_tour
 
-def perturb_heavily(tour):
-    """More aggressive perturbation for diversification."""
-    n = len(tour)
-    new_tour = tour.copy()
-    
-    # Apply multiple random moves
-    for _ in range(int(n * 0.3)):  # Perturb 30% of the tour
-        move_type = random.choice(["swap", "reverse", "insert"])
-        
-        if move_type == "swap":
-            i, j = random.sample(range(n), 2)
-            new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
-        elif move_type == "reverse":
-            i, j = sorted(random.sample(range(n), 2))
-            if j - i > 1:
-                new_tour[i:j+1] = new_tour[i:j+1][::-1]
-        else:  # insert
-            i, j = random.sample(range(n), 2)
-            city = new_tour.pop(i)
-            new_tour.insert(j, city)
-    
-    return new_tour
+def iterated_local_search(dist_matrix: np.ndarray, max_iterations: int = 100) -> Tuple[List[int], float]:
+    """Giải TSP bằng Iterated Local Search với nhiễu thích nghi.
 
-def ils(dist_matrix, max_iterations=100, convergence_log=None):
-    """Iterated Local Search cho TSP."""
-    n = len(dist_matrix)
-    # Better initialization with nearest neighbor + 2-opt
-    tour = nearest_neighbor(dist_matrix, random.randint(0, n-1))
-    tour, tour_len = two_opt(tour, dist_matrix)
-    
-    best_tour = tour.copy()
-    best_length = tour_len
-    
+    Args:
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+        max_iterations: Số lần lặp tối đa.
+
+    Returns:
+        Chu trình tốt nhất và độ dài của nó.
+    """
+    num_nodes = len(dist_matrix)
+    tour = nearest_neighbor(dist_matrix, random.randint(0, num_nodes - 1))
+    tour, best_length = two_opt(tour, dist_matrix)
+    best_tour = tour[:]
     no_improvement = 0
     max_no_improvement = 20
-    
-    for iteration in range(max_iterations):
-        # Perturb solution based on how long we've been stuck
-        if no_improvement < 10:
-            new_tour = perturb_adaptive(tour, int(n*0.1))
+
+    for _ in range(max_iterations):
+        perturbation_size = int(num_nodes * (0.1 if no_improvement < 10 else 0.2))
+        new_tour = perturb_adaptive(tour, perturbation_size)
+        new_tour, new_length = two_opt(new_tour, dist_matrix)
+        if new_length < best_length:
+            tour, best_tour, best_length = new_tour[:], new_tour[:], new_length
+            no_improvement = 0
         else:
-            new_tour = perturb_adaptive(tour, int(n*0.2))
-            
-        # Apply local search
-        new_tour, new_length = two_opt_improved(new_tour, dist_matrix)
-        
-        # Acceptance criterion (only accept if better or with small probability)
-        if new_length < tour_len or random.random() < 0.1:
-            tour = new_tour
-            tour_len = new_length
-            
-            # Update best solution if improved
-            if new_length < best_length:
-                best_tour = new_tour.copy()
-                best_length = new_length
-                no_improvement = 0
-            else:
-                no_improvement += 1
-        else:
+            tour = new_tour if random.random() < 0.1 else tour
             no_improvement += 1
-            
-        if convergence_log is not None:
-            convergence_log.append(best_length)
-    
+        if no_improvement >= max_no_improvement:
+            tour = perturb_heavily(tour, num_nodes)
+            no_improvement = 0
+
     return best_tour, best_length
 
-def perturb_adaptive(tour, num_moves):
-    """More intelligent perturbation that avoids tiny changes."""
-    new_tour = tour.copy()
-    n = len(tour)
-    
-    moves = random.randint(max(3, num_moves-5), num_moves+5)  # Randomize intensity
-    
+def perturb_adaptive(tour: List[int], num_moves: int) -> List[int]:
+    """Nhiễu chu trình một cách thích nghi với các loại di chuyển khác nhau.
+
+    Args:
+        tour: Chu trình hiện tại.
+        num_moves: Số lượng di chuyển nhiễu.
+
+    Returns:
+        Chu trình bị nhiễu.
+    """
+    new_tour = tour[:]
+    num_nodes = len(tour)
+    moves = random.randint(max(3, num_moves - 5), num_moves + 5)
     for _ in range(moves):
-        move_type = random.choice(["double_bridge", "swap", "reverse"])
-        
-        if move_type == "double_bridge" and n > 7:  # Double bridge (4-opt) move
-            points = sorted(random.sample(range(n), 4))
-            p1, p2, p3, p4 = points
-            # Apply 4-opt move: [0:p1] + [p3:p4] + [p2:p3] + [p1:p2] + [p4:]
-            new_tour = new_tour[:p1] + new_tour[p3:p4] + new_tour[p2:p3] + new_tour[p1:p2] + new_tour[p4:]
-        elif move_type == "swap":
-            i, j = random.sample(range(n), 2)
+        move_type = random.choice(["swap", "reverse"])
+        i, j = random.sample(range(num_nodes), 2)
+        if move_type == "swap":
             new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
-        else:  # reverse
-            i, j = sorted(random.sample(range(n), 2))
-            if j - i > 1:  # Only reverse if segment has length > 1
-                new_tour[i:j+1] = new_tour[i:j+1][::-1]
-    
+        else:
+            i, j = sorted([i, j])
+            if j - i > 1:
+                new_tour[i:j + 1] = new_tour[i:j + 1][::-1]
     return new_tour
 
-def two_opt_improved(tour, dist_matrix):
-    """Faster 2-opt implementation with first improvement strategy."""
-    best_tour = tour.copy()
-    best_length = tour_length(tour, dist_matrix)
-    improved = True
-    n = len(tour)
-    
-    while improved:
-        improved = False
-        for i in range(1, n-2):
-            # Only check a subset of possible moves for efficiency
-            for j in range(i+1, min(i+20, n)):
-                if j - i == 1:
-                    continue  # Skip adjacent cities
-                    
-                # Calculate gain directly without full tour calculation
-                a, b = tour[i-1], tour[i]
-                c, d = tour[j], tour[(j+1) % n]
-                
-                # If we replace edges (a,b) and (c,d) with (a,c) and (b,d)
-                current_distance = dist_matrix[a][b] + dist_matrix[c][d]
-                new_distance = dist_matrix[a][c] + dist_matrix[b][d]
-                
-                if new_distance < current_distance:
-                    new_tour = best_tour.copy()
-                    new_tour[i:j+1] = new_tour[i:j+1][::-1]
-                    new_length = tour_length(new_tour, dist_matrix)  # Verify gain
-                    
-                    if new_length < best_length:
-                        best_tour = new_tour
-                        best_length = new_length
-                        improved = True
-                        break  # First improvement
-            
-            if improved:
-                break
-    
-    return best_tour, best_length
+def variable_neighborhood_search(dist_matrix: np.ndarray, max_iterations: int = 100) -> Tuple[List[int], float]:
+    """Giải TSP bằng Variable Neighborhood Search.
 
-def swap(tour, i, j):
-    """Hoán đổi hai thành phố."""
-    new_tour = tour.copy()
-    new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
-    return new_tour
+    Args:
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+        max_iterations: Số lần lặp tối đa.
 
-def reverse_segment(tour, i, j):
-    """Đảo ngược một đoạn chu trình."""
-    new_tour = tour.copy()
-    new_tour[i:j+1] = new_tour[i:j+1][::-1]
-    return new_tour
+    Returns:
+        Chu trình tốt nhất và độ dài của nó.
+    """
+    num_nodes = len(dist_matrix)
+    tour = nearest_neighbor(dist_matrix, random.randint(0, num_nodes - 1))
+    tour, best_length = two_opt(tour, dist_matrix)
+    best_tour = tour[:]
+    neighborhoods = [lambda t, i, j: t[:i] + t[i:j + 1][::-1] + t[j + 1:],  # Đảo ngược
+                     lambda t, i, j: swap(t, i, j)]  # Hoán đổi
 
-def insert(tour, i, j):
-    """Chèn một thành phố vào vị trí khác."""
-    new_tour = tour.copy()
-    city = new_tour.pop(i)
-    new_tour.insert(j, city)
-    return new_tour
-
-def vns(dist_matrix, max_iterations=100, convergence_log=None):
-    """Variable Neighborhood Search cho TSP."""
-    n = len(dist_matrix)
-    # Better initialization
-    tour = nearest_neighbor(dist_matrix, random.randint(0, n-1))
-    tour, tour_len = two_opt(tour, dist_matrix)
-    
-    best_tour = tour.copy()
-    best_length = tour_len
-    current_tour = tour
-    current_length = tour_len
-    
-    # Define neighborhoods and their functions
-    neighborhoods = [
-        {"name": "swap", "function": lambda t, i, j: swap(t, i, j)},
-        {"name": "reverse", "function": lambda t, i, j: reverse_segment(t, i, j)},
-        {"name": "insert", "function": lambda t, i, j: insert(t, i, j)},
-        {"name": "2-opt", "function": lambda t, i, j: two_opt_single_move(t, i, j)}
-    ]
-    
     for iteration in range(max_iterations):
         k = 0
         while k < len(neighborhoods):
-            # Shaking phase - perturb the solution using kth neighborhood
-            i, j = sorted(random.sample(range(n), 2))
-            if j - i < 2:  # Ensure meaningful moves
-                j = (i + 2) % n
-                
-            new_tour = neighborhoods[k]["function"](current_tour, i, j)
-            
-            # Local search phase - apply 2-opt to improve the solution
-            new_tour, new_length = two_opt_first_improvement(new_tour, dist_matrix)
-            
-            # Move or not
-            if new_length < current_length:
-                current_tour = new_tour
-                current_length = new_length
-                
-                # Update best solution
-                if new_length < best_length:
-                    best_tour = new_tour.copy()
-                    best_length = new_length
-                
-                # Return to first neighborhood
+            i, j = sorted(random.sample(range(num_nodes), 2))
+            if j - i < 2:
+                j = (i + 2) % num_nodes
+            new_tour = neighborhoods[k](tour[:], i, j)
+            new_tour, new_length = two_opt(new_tour, dist_matrix)
+            if new_length < best_length:
+                tour, best_tour, best_length = new_tour[:], new_tour[:], new_length
                 k = 0
             else:
-                # Try next neighborhood
                 k += 1
-        
-        # Apply perturbation to escape local optima
         if iteration % 10 == 0:
-            current_tour = perturb_adaptive(current_tour, int(n*0.15))
-            current_length = tour_length(current_tour, dist_matrix)
-        
-        if convergence_log is not None:
-            convergence_log.append(best_length)
-    
+            tour = perturb_adaptive(tour, int(num_nodes * 0.15))
+
     return best_tour, best_length
 
-def two_opt_single_move(tour, i, j):
-    """Apply a single 2-opt move."""
-    new_tour = tour.copy()
-    new_tour[i:j+1] = new_tour[i:j+1][::-1]
+def swap(tour: List[int], i: int, j: int) -> List[int]:
+    """Hoán đổi hai thành phố trong chu trình.
+
+    Args:
+        tour: Chu trình hiện tại.
+        i: Chỉ số của thành phố thứ nhất.
+        j: Chỉ số của thành phố thứ hai.
+
+    Returns:
+        Chu trình mới với hai thành phố được hoán đổi.
+    """
+    new_tour = tour[:]
+    new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
     return new_tour
 
-def two_opt_first_improvement(tour, dist_matrix):
-    """2-opt with first improvement strategy for VNS."""
-    best_tour = tour.copy()
-    best_length = tour_length(tour, dist_matrix)
-    n = len(tour)
-    improved = True
-    
-    while improved:
-        improved = False
-        for i in range(1, n-1):
-            for j in range(i+1, n):
-                new_tour = best_tour.copy()
-                new_tour[i:j+1] = new_tour[i:j+1][::-1]
-                new_length = tour_length(new_tour, dist_matrix)
-                
-                if new_length < best_length:
-                    best_tour = new_tour
-                    best_length = new_length
-                    improved = True
-                    break  # First improvement
-                    
-            if improved:
-                break
-                
-    return best_tour, best_length
+def simulated_annealing(dist_matrix: np.ndarray, initial_temp: float = 1000, cooling_rate: float = 0.995, max_iterations: int = 1000) -> Tuple[List[int], float]:
+    """Giải TSP bằng Simulated Annealing với làm nguội thích nghi.
 
-def nearest_neighbor(dist_matrix, start_idx=0):
-    """Create initial tour using nearest neighbor heuristic."""
-    n = len(dist_matrix)
-    tour = [start_idx]
-    unvisited = set(range(n))
-    unvisited.remove(start_idx)
-    
-    while unvisited:
-        current = tour[-1]
-        nearest = min(unvisited, key=lambda i: dist_matrix[current][i])
-        tour.append(nearest)
-        unvisited.remove(nearest)
-        
-    return tour
+    Args:
+        dist_matrix: Ma trận khoảng cách đã tính trước.
+        initial_temp: Nhiệt độ ban đầu.
+        cooling_rate: Tỷ lệ giảm nhiệt độ.
+        max_iterations: Số lần lặp tối đa.
 
-def sa(dist_matrix, initial_temp=1000, cooling_rate=0.995, max_iterations=1000, convergence_log=None):
-    """Simulated Annealing cho TSP."""
-    n = len(dist_matrix)
-    # Initialize with nearest neighbor for better starting tour
-    tour = nearest_neighbor(dist_matrix, random.randint(0, n-1))
-    current_tour = tour.copy()
-    current_length = tour_length(current_tour, dist_matrix)
-    
-    best_tour = tour.copy()
-    best_length = current_length
+    Returns:
+        Chu trình tốt nhất và độ dài của nó.
+    """
+    num_nodes = len(dist_matrix)
+    tour = nearest_neighbor(dist_matrix, random.randint(0, num_nodes - 1))
+    current_length = compute_tour_length(tour, dist_matrix)
+    best_tour, best_length = tour[:], current_length
     temp = initial_temp
-    non_improving_iterations = 0
-    
-    for iteration in range(max_iterations):
-        # Use multiple neighborhood types randomly
-        move_type = random.choice(["swap", "reverse", "insert"])
-        
-        if move_type == "swap":
-            i, j = random.sample(range(n), 2)
-            new_tour = current_tour.copy()
-            new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
-        elif move_type == "reverse":
-            i, j = sorted(random.sample(range(n), 2))
-            new_tour = current_tour.copy()
-            new_tour[i:j+1] = new_tour[i:j+1][::-1]
-        else:  # insert
-            i, j = random.sample(range(n), 2)
-            new_tour = current_tour.copy()
-            city = new_tour.pop(i)
-            new_tour.insert(j, city)
-            
-        new_length = tour_length(new_tour, dist_matrix)
+    non_improving = 0
+
+    for _ in range(max_iterations):
+        i, j = random.sample(range(num_nodes), 2)
+        new_tour = tour[:]
+        new_tour[i], new_tour[j] = new_tour[j], new_tour[i]
+        new_length = compute_tour_length(new_tour, dist_matrix)
         delta = new_length - current_length
-        
-        # Acceptance criterion (fixed)
         if delta < 0 or random.random() < math.exp(-delta / temp):
-            current_tour = new_tour
-            current_length = new_length
-            
-            # Update best solution if improved
+            tour, current_length = new_tour[:], new_length
             if new_length < best_length:
-                best_tour = new_tour.copy()
-                best_length = new_length
-                non_improving_iterations = 0
+                best_tour, best_length = new_tour[:], new_length
+                non_improving = 0
             else:
-                non_improving_iterations += 1
-        else:
-            non_improving_iterations += 1
-        
-        # Reheating if stuck in local optimum
-        if non_improving_iterations > 100:
+                non_improving += 1
+        if non_improving > 100:
             temp = initial_temp * 0.5
-            non_improving_iterations = 0
-        else:
-            temp *= cooling_rate
-            
-        if convergence_log is not None:
-            convergence_log.append(best_length)
-    
+            non_improving = 0
+        temp *= cooling_rate
+
     return best_tour, best_length
 
 # Hàm chính
-def main():
-    """Chạy và so sánh các thuật toán trên dữ liệu TSPLIB."""
-    print("Bắt đầu chạy main()...")
-    print(f"Thư mục hiện tại: {os.getcwd()}")
-    
+def main() -> None:
+    """Chạy và so sánh các thuật toán TSP trên các bộ dữ liệu TSPLIB."""
+    print(f"Khởi động chương trình giải TSP tại {os.getcwd()}")
     datasets = {
         'eil51.tsp': 426,
         'berlin52.tsp': 7542,
         'st70.tsp': 675,
-        #'lin318.tsp': 42029
+        'lin318.tsp': 42029  # Thêm bộ dữ liệu lin318.tsp
     }
-    
-    print("Datasets:", list(datasets.keys()))
-    
-    # Kiểm tra file tồn tại trước khi chạy
-    for dataset in datasets:
-        if not os.path.exists(dataset):
-            print(f"Cảnh báo: File {dataset} không tồn tại trong thư mục {os.getcwd()}")
-        else:
-            print(f"Tìm thấy file: {dataset}")
-    
     algorithms = {
-        'Tabu Search': lambda x: tabu_search(x, max_iterations=1000, tabu_size=10, convergence_log=[]),
-        'Iterated Local Search': lambda x: ils(x, max_iterations=100, convergence_log=[]),
-        'Variable Neighborhood Search': lambda x: vns(x, max_iterations=100, convergence_log=[]),
-        'Simulated Annealing': lambda x: sa(x, initial_temp=1000, cooling_rate=0.995, max_iterations=1000, convergence_log=[])
+        'Tabu Search': lambda x: tabu_search(x),
+        'Iterated Local Search': lambda x: iterated_local_search(x),
+        'Variable Neighborhood Search': lambda x: variable_neighborhood_search(x),
+        'Simulated Annealing': lambda x: simulated_annealing(x)
     }
-    
-    print("Algorithms:", list(algorithms.keys()))
-    
     results = {}
-    convergence_logs = {}
-    
+
     for dataset, optimal_length in datasets.items():
-        print(f"\n=== Xử lý {dataset} ===")
+        print(f"\nĐang xử lý '{dataset}'")
         nodes, coords, dist_matrix = load_tsp_data(dataset)
         if dist_matrix is None:
-            print(f"Bỏ qua {dataset} do lỗi đọc file")
             continue
-        
-        print(f"Đọc thành công {dataset}, số thành phố: {len(nodes)}")
-        
         results[dataset] = {}
-        convergence_logs[dataset] = {}
-        
         for name, algo in algorithms.items():
-            print(f"Chạy {name}...")
-            convergence_log = []
-            start_time = time.time()
+            start_time = time.perf_counter()
             tour, length = algo(dist_matrix)
-            end_time = time.time()
-            results[dataset][name] = {'tour': tour, 'length': length, 'time': end_time - start_time}
-            convergence_logs[dataset][name] = convergence_log
-            print(f"Hoàn thành {name} trên {dataset}, độ dài: {length:.2f}")
-        
-        print(f"Kết quả trên {dataset}:")
-        for name, res in results[dataset].items():
-            error = (res['length'] - optimal_length) / optimal_length * 100
-            print(f"{name}: Độ dài = {res['length']:.2f}, Sai lệch = {error:.2f}%, Thời gian = {res['time']:.2f}s")
-        
-        print(f"Vẽ biểu đồ chu trình cho {dataset}...")
+            elapsed = time.perf_counter() - start_time
+            results[dataset][name] = {'tour': tour, 'length': length, 'time': elapsed}
+            error = (length - optimal_length) / optimal_length * 100
+            print(f"{name}: Độ dài = {length:.2f}, Sai lệch = {error:.2f}%, Thời gian = {elapsed:.2f}s")
+
         fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-        axes = axes.ravel()
         for idx, (name, res) in enumerate(results[dataset].items()):
-            plot_tour(res['tour'], coords, f"{name}\\nĐộ dài: {res['length']:.2f}", axes[idx], dataset)
+            plot_tour(res['tour'], coords, f"{name}\nĐộ dài: {res['length']:.2f}", axes.flat[idx], dataset)
         plt.tight_layout()
         plt.savefig(f"{dataset}_tours.png")
-        plt.show()
-        print(f"Biểu đồ chu trình đã được lưu vào {dataset}_tours.png")
-    
-    print("Lưu kết quả vào CSV...")
+        plt.close()
+        print(f"Biểu đồ chu trình đã được lưu vào '{dataset}_tours.png'")
+
     save_results_to_csv(results, datasets)
-    
-    print("Vẽ biểu đồ so sánh...")
-    plot_comparison(results, datasets, metric='length', filename='error_comparison.png')
-    plot_comparison(results, datasets, metric='time', filename='time_comparison.png')
-    
-    print("Vẽ biểu đồ hội tụ...")
-    for dataset in datasets:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for name, log in convergence_logs[dataset].items():
-            ax.plot(log, label=name)
-        ax.set_xlabel('Lần lặp')
-        ax.set_ylabel('Độ dài chu trình')
-        ax.set_title(f'Hội tụ của các thuật toán trên {dataset}')
-        ax.legend()
-        plt.savefig(f"{dataset}_convergence.png")
-        plt.show()
-        print(f"Biểu đồ hội tụ đã được lưu vào {dataset}_convergence.png")
+    plot_comparison(results, datasets, 'length', 'error_comparison.png')
+    plot_comparison(results, datasets, 'time', 'time_comparison.png')
 
 if __name__ == "__main__":
     main()
